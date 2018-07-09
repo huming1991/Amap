@@ -1,10 +1,10 @@
 <template>
     <div class="container">
-        <div id="mapContainer" v-on:click="getAqi()"></div>
+        <div id="mapContainer"></div>
         <div id="pos">
             <div>
-                <label>城市：</label><input type="text" id="city" v-model="city" /><br>
-                <label>污染指数：</label><input type="text" id="aqicn" v-model="aqi"/><br>
+                <label>城市：</label><input type="text" id="city" v-model="city"/><br>
+                <label>天气：</label><input type="text" id="aqicn" v-model="aqi"/><br>
                 <label>经度:</label><input type="text" id="lngX" name="lngX" v-model="lngX"/><br>
                 <label>纬度:</label><input type="text" id="latY" name="latY" v-model="latY"/><br>
                 <label>添加Mark:</label><input type="button" class="button" value="添加点标记覆盖物" id="addMarker"
@@ -24,6 +24,7 @@
 </template>
 <script>
     import AMap from 'AMap';
+
     var mapObj;
     export default {
         data() {
@@ -33,76 +34,13 @@
                 city: '',
                 aqi: '',
                 marker: null,
-                mapObj:null
+                mapObj: null,
+                geolocation: null,
+                myMark: null,
+                marks: []
             }
         },
         methods: {
-            getAqi() {
-                var that = this;
-                var token = "f7ea107c74bc8acaa9e851bd30f1ceb5f13c76fb";
-                var clickEventListener = AMap.event.addListener(mapObj, 'click', function (e) {
-                    //get x, y coordinate
-                    var x = e.lnglat.getLng();
-                    var y = e.lnglat.getLat();
-                    that.lngX = x;
-                    that.latY = y;
-                    AMap.service('AMap.Geocoder', function () {
-                        var geocoder = new AMap.Geocoder({
-                            city: ""
-                        });
-                        var lnglatXY = [x, y];
-                        geocoder.getAddress(lnglatXY, function (status, result) {
-                            if (status === 'complete' && result.info === 'OK') {
-                                //get city
-                                var cityName = result.regeocode.addressComponent.province;
-                                that.city = cityName;
-                                ajax('https://api.waqi.info/feed/shanghai/', 'get', {
-                                    city: cityName,
-                                    token: token
-                                }, true)
-                                    .then(function (response) {
-                                        //get aqi
-                                        that.aqi = response.data.iaqi.pm25.v;
-                                    }, function (error) {
-                                        alert("Failed!", error);
-                                    });
-                            } else {
-                                alert("Failed, cannot get city");
-                            }
-                        });
-                    })
-                });
-
-                function ajax(url, type, param, async, header) {
-                    return new Promise(function (resolve, reject) {
-                        var req = new XMLHttpRequest();
-                        req.onload = function () {
-                            if (req.status == 200 || req.status == 304) {
-                                resolve(JSON.parse(req.response));
-                            } else {
-                                reject(Error(req.statusText));
-                            }
-                        };
-                        req.onerror = function () {
-                            reject(Error("Network Error"));
-                        };
-                        type == null || type.toUpperCase() == 'GET' ? type = 'get' : type = 'post';
-                        param = formatParams(param);
-                        param == null || param == '' ? url : url = url + '?' + param;
-                        async == null || async == true ? async = true : async = false;
-                        req.open(type, url, async);
-                        req.send();
-                    });
-
-                    function formatParams(data) {
-                        var _fpArr = [];
-                        for (var _fpName in data) {
-                            _fpArr.push(_fpName + "=" + data[_fpName]);
-                        }
-                        return _fpArr.join("&");
-                    };
-                }
-            },
             addMarker() {
                 if (!this.marker) {
                     this.marker = new AMap.Marker({
@@ -121,16 +59,16 @@
                 //自适应
                 // mapObj.setFitView(marker);
             },
-            delMarker(){
-                if (this.marker){
+            delMarker() {
+                if (this.marker) {
                     mapObj.remove(this.marker);
                     this.marker = null;
                 }
             },
-            ytToYx(){
+            ytToYx() {
                 var path = [
-                    new AMap.LngLat("120.050579","30.247132"),
-                    new AMap.LngLat("120.107056","30.299169"),
+                    new AMap.LngLat("120.050579", "30.247132"),
+                    new AMap.LngLat("120.107056", "30.299169"),
                 ];
 
                 // 创建折线实例
@@ -144,7 +82,7 @@
 // 将折线添加至地图实例
                 mapObj.add(polyline);
             },
-            xhwl(){
+            xhwl() {
                 var polygonOptions = {
                     map: mapObj,
                     strokeColor: '#97EC71',
@@ -169,39 +107,138 @@
                 ];
                 var polygon = new AMap.Polygon(polygonOptions);
                 polygon.setPath(pathArray);
-                console.log(polygon.getArea());
             },
-            hy2kl(){
+            hy2kl() {
                 var circle = new AMap.Circle({
-                    center: new AMap.LngLat(120.097314,30.268845),  // 圆心位置
+                    center: new AMap.LngLat(120.097314, 30.268845),  // 圆心位置
                     radius: 500, // 圆半径
                     fillColor: 'red',   // 圆形填充颜色
                     strokeColor: '#000', // 描边颜色
                     strokeWeight: 2, // 描边宽度,
-                    strokeOpacity:0.3,//轮廓透明度
-                    strokeStyle:'dashed',
-                    fillOpacity:0.3//填充透明度
+                    strokeOpacity: 0.3,//轮廓透明度
+                    strokeStyle: 'dashed',
+                    fillOpacity: 0.3//填充透明度
                 });
 
                 mapObj.add(circle);
+            },
+            //解析定位结果
+            onComplete(data) {
+                let Lng = data.position.getLng();
+                let Lat = data.position.getLat();
+                this.myMark = new AMap.Marker({
+                    map: mapObj,
+                    position: [Lng, Lat]
+                });
+                console.log(this.myMark);
+            },
+            //解析定位错误信息
+            onError(data) {
             }
         },
+        created(){
+
+        },
         mounted() {
+
+            let _self = this;
             mapObj = new AMap.Map("mapContainer", {
                 resizeEnable: true,
                 view: new AMap.View2D({
                     resizeEnable: true,
-                    zoom:13
+                    zoom: 16
                 }),
-                keyboardEnable:false
+                keyboardEnable: false
             });
-            console.log(mapObj);
-
-            AMap.plugin(['AMap.ToolBar','AMap.Scale','AMap.OverView'],function(){
+            AMap.plugin(['AMap.ToolBar', 'AMap.Scale', 'AMap.OverView'], function () {
                 mapObj.addControl(new AMap.ToolBar());
                 mapObj.addControl(new AMap.Scale());
-                mapObj.addControl(new AMap.OverView({isOpen:true}));
-            })
+                mapObj.addControl(new AMap.OverView({isOpen: true}));
+            });
+
+            //定位当前位置
+            mapObj.plugin('AMap.Geolocation', function () {
+                _self.geolocation = new AMap.Geolocation({
+                    enableHighAccuracy: true,//是否使用高精度定位，默认:true
+                    timeout: 10000,          //超过10秒后停止定位，默认：无穷大
+                    maximumAge: 0,           //定位结果缓存0毫秒，默认：0
+                    convert: true,           //自动偏移坐标，偏移后的坐标为高德坐标，默认：true
+                    showButton: true,        //显示定位按钮，默认：true
+                    buttonPosition: 'LB',    //定位按钮停靠位置，默认：'LB'，左下角
+                    buttonOffset: new AMap.Pixel(10, 20),//定位按钮与设置的停靠位置的偏移量，默认：Pixel(10, 20)
+                    showMarker: true,        //定位成功后在定位到的位置显示点标记，默认：true
+                    showCircle: true,        //定位成功后用圆圈表示定位精度范围，默认：true
+                    panToLocation: true,     //定位成功后将定位到的位置作为地图中心点，默认：true
+                    zoomToAccuracy: false      //定位成功后调整地图视野范围使定位位置及精度范围视野内可见，默认：false
+                });
+                mapObj.addControl(_self.geolocation);
+                _self.geolocation.getCurrentPosition();
+                AMap.event.addListener(_self.geolocation, 'complete', _self.onComplete);//返回定位信息
+                AMap.event.addListener(_self.geolocation, 'error', _self.onError);      //返回定位出错信息
+            });
+
+
+            AMap.event.addListener(mapObj, 'click', function (e) {
+                //get x, y coordinate
+                var x = e.lnglat.getLng();
+                var y = e.lnglat.getLat();
+                mapObj.remove(_self.marks);
+
+                console.log(_self.myMark);
+                let dis = _self.myMark.getPosition().distance([x, y]);
+                let temMark = new AMap.Marker({
+                    icon: "http://webapi.amap.com/theme/v1.3/markers/n/mark_b.png",
+                    position: [x, y],
+                });
+                temMark.setMap(mapObj);
+                temMark.setLabel({//label默认蓝框白底左上角显示，样式className为：amap-marker-label
+                    offset: new AMap.Pixel(20, 20),//修改label相对于maker的位置
+                    content: "距我" + AMap.Util.format(dis, 2) + "米"
+                });
+                _self.marks.push(temMark);
+
+
+                _self.lngX = x;
+                _self.latY = y;
+                AMap.service('AMap.Geocoder', function () {
+                    var geocoder = new AMap.Geocoder({
+                        city: ""
+                    });
+                    var lnglatXY = [x, y];
+                    new Promise((resolve, reject) => {
+                        geocoder.getAddress(lnglatXY, function (status, result) {
+                            if (status === 'complete' && result.info === 'OK') {
+                                //get city
+                                var cityName = result.regeocode.addressComponent.city;
+                                _self.city = cityName;
+                                resolve()
+                            } else {
+                                reject();
+                            }
+                        });
+                    }).then(response => {
+                        return new Promise((resolve, reject) => {
+                            AMap.service('AMap.Weather', function () {
+                                let weather = new AMap.Weather();
+                                mapObj.addControl(weather);
+                                weather.getLive(_self.city, function (ErrorStatus, WeatherLiveResult) {
+                                    if (null == ErrorStatus) {
+                                        resolve(WeatherLiveResult);
+                                    } else {
+                                        reject();
+                                    }
+                                })
+                            })
+                        })
+                    }, error => {
+
+                    }).then(WeatherLiveResult => {
+                        console.log(WeatherLiveResult);
+                        _self.aqi = WeatherLiveResult.weather + "|" +  WeatherLiveResult.temperature + "℃";
+                    });
+
+                })
+            });
         }
     }
 </script>
